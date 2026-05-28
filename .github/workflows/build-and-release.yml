@@ -1,0 +1,60 @@
+name: Build & Package Extension
+
+on:
+  push:
+    branches:
+      - main
+      - master
+    tags:
+      - 'v*'
+  pull_request:
+    branches:
+      - main
+      - master
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build and Package
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install Zip Tool
+        run: sudo apt-get update && sudo apt-get install -y zip
+
+      - name: Run Build Script
+        run: npm run build
+
+      - name: Archive Production Artifacts (Chrome / Edge)
+        uses: actions/upload-artifact@v4
+        with:
+          name: savegpt-chrome-edge
+          path: dist/savegpt-chrome-edge.zip
+
+      - name: Archive Production Artifacts (Firefox)
+        uses: actions/upload-artifact@v4
+        with:
+          name: savegpt-firefox
+          path: dist/savegpt-firefox.zip
+
+      - name: Create GitHub Release (On Tag Push)
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist/savegpt-chrome-edge.zip
+            dist/savegpt-firefox.zip
+          draft: true
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

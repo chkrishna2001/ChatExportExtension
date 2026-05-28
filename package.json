@@ -1,0 +1,11 @@
+{
+  "name": "savegpt-extension",
+  "version": "1.0.0",
+  "description": "Backup ChatGPT, Claude, and Gemini conversations into beautifully formatted Markdown documents.",
+  "scripts": {
+    "build": "node build.js"
+  },
+  "author": "",
+  "license": "ISC",
+  "private": true
+}

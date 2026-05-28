@@ -1,0 +1,187 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SaveGPT - ChatGPT, Claude, Gemini Exporter</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <div class="app-container">
+    <!-- Header -->
+    <header class="app-header">
+      <div class="logo-area">
+        <div class="logo-glow"></div>
+        <img src="../icons/icon128.png" alt="SaveGPT Logo" class="app-logo">
+        <span class="app-title">Save<span class="highlight">GPT</span></span>
+      </div>
+      <div id="platform-badge" class="platform-badge unknown">
+        <span class="badge-dot"></span>
+        <span id="platform-name">Inactive</span>
+      </div>
+    </header>
+
+    <!-- Tab Navigation -->
+    <nav class="tab-nav">
+      <button class="nav-btn active" data-tab="active-tab">Active Export</button>
+      <button class="nav-btn" data-tab="batch-tab">Batch Export</button>
+      <div class="nav-indicator"></div>
+    </nav>
+
+    <!-- Content Sections -->
+    <main class="tab-content-area">
+      
+      <!-- Tab 1: Active Tab Export -->
+      <section id="active-tab" class="tab-pane active">
+        <div class="info-card">
+          <p class="card-desc">Download your active chat window in a clean, fully formatted Markdown (.md) document.</p>
+        </div>
+
+        <div class="settings-section">
+          <h3 class="section-title">Export Configurations</h3>
+          
+          <div class="setting-item">
+            <div class="setting-info">
+              <span class="setting-label">Auto-scroll to top</span>
+              <span class="setting-tooltip">Scrolls the chat timeline upward to fetch virtualized history.</span>
+            </div>
+            <label class="switch">
+              <input type="checkbox" id="active-scroll" checked>
+              <span class="slider"></span>
+            </label>
+          </div>
+
+          <div class="setting-item">
+            <div class="setting-info">
+              <span class="setting-label">Include metadata header</span>
+              <span class="setting-tooltip">Prepends title, source URL, date, and platform metadata.</span>
+            </div>
+            <label class="switch">
+              <input type="checkbox" id="active-metadata" checked>
+              <span class="slider"></span>
+            </label>
+          </div>
+
+          <div class="setting-item">
+            <div class="setting-info">
+              <span class="setting-label">Download chat media</span>
+              <span class="setting-tooltip">Saves images and attachments in a dedicated subfolder.</span>
+            </div>
+            <label class="switch">
+              <input type="checkbox" id="active-media-download">
+              <span class="slider"></span>
+            </label>
+          </div>
+        </div>
+
+        <button id="btn-export-active" class="btn-primary">
+          <span class="btn-glow"></span>
+          <span class="btn-text">Export Current Chat</span>
+        </button>
+
+        <div id="active-status" class="status-box hidden">
+          <div class="status-header">
+            <div class="status-spinner"></div>
+            <span id="active-status-text">Exporting conversation...</span>
+          </div>
+        </div>
+      </section>
+
+      <!-- Tab 2: Batch URL Export -->
+      <section id="batch-tab" class="tab-pane">
+        <div class="info-card">
+          <p class="card-desc">Provide a list of chat URLs. The extension will open each in sequence, scroll to load history, and save them automatically.</p>
+        </div>
+
+        <div class="batch-input-area">
+          <label for="batch-urls" class="section-title">Chat URLs (one per line)</label>
+          <textarea id="batch-urls" placeholder="https://chatgpt.com/c/xxxxxx&#10;https://claude.ai/chat/yyyyyy&#10;https://gemini.google.com/app/zzzzzz" rows="4"></textarea>
+        </div>
+
+        <div class="settings-section">
+          <h3 class="section-title">Batch Configurations</h3>
+          
+          <div class="setting-item">
+            <div class="setting-info">
+              <span class="setting-label">Auto-scroll each chat</span>
+              <span class="setting-tooltip">Ensures deep historical pages are loaded before conversion.</span>
+            </div>
+            <label class="switch">
+              <input type="checkbox" id="batch-scroll" checked>
+              <span class="slider"></span>
+            </label>
+          </div>
+
+          <div class="setting-item">
+            <div class="setting-info">
+              <span class="setting-label">Include metadata header</span>
+              <span class="setting-tooltip">Adds descriptive Markdown frontmatter metadata to each file.</span>
+            </div>
+            <label class="switch">
+              <input type="checkbox" id="batch-metadata" checked>
+              <span class="slider"></span>
+            </label>
+          </div>
+
+          <div class="setting-item">
+            <div class="setting-info">
+              <span class="setting-label">Download chat media</span>
+              <span class="setting-tooltip">Saves images and attachments in a dedicated subfolder.</span>
+            </div>
+            <label class="switch">
+              <input type="checkbox" id="batch-media-download">
+              <span class="slider"></span>
+            </label>
+          </div>
+        </div>
+
+        <!-- Normal State Controls -->
+        <div id="batch-initial-actions" class="batch-actions">
+          <button id="btn-start-batch" class="btn-primary">
+            <span class="btn-glow"></span>
+            <span class="btn-text">Start Batch Export</span>
+          </button>
+        </div>
+
+        <!-- Active Batch Status State -->
+        <div id="batch-running-state" class="batch-running-panel hidden">
+          <div class="batch-progress-header">
+            <span class="batch-run-title">Batch Export in Progress</span>
+            <span id="batch-progress-fraction">0 / 0</span>
+          </div>
+
+          <div class="progress-bar-bg">
+            <div id="batch-progress-fill" class="progress-bar-fill"></div>
+          </div>
+
+          <div class="current-batch-url">
+            <span class="label">Current:</span>
+            <span id="batch-current-url-text" class="value">Waiting to start...</span>
+          </div>
+
+          <div class="batch-results-list" id="batch-results-list">
+            <!-- Dynamically populated rows -->
+          </div>
+
+          <button id="btn-cancel-batch" class="btn-secondary">
+            Cancel Batch Export
+          </button>
+        </div>
+      </section>
+
+    </main>
+
+    <!-- Footer -->
+    <footer class="app-footer-bar">
+      <span>Designed by Antigravity v1.0.0</span>
+      <span class="footer-dot">•</span>
+      <a href="https://github.com" target="_blank" class="footer-link">Documentation</a>
+    </footer>
+  </div>
+
+  <script src="popup.js"></script>
+</body>
+</html>
