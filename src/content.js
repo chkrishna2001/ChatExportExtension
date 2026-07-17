@@ -1,3 +1,32 @@
+if (window.location.hostname.includes('claude.ai') || window.location.hostname.includes('deepseek.com')) {
+  try {
+    const script = document.createElement('script');
+    script.src = chrome.runtime.getURL('src/inject.js');
+    (document.head || document.documentElement).appendChild(script);
+    script.remove();
+  } catch (e) {
+    console.error('[SaveGPT] Injected script load failed:', e);
+  }
+}
+
+// Global network cache variables
+window.SaveGPTClaudeData = null;
+window.SaveGPTDeepSeekData = null;
+
+window.addEventListener('message', (e) => {
+  if (e.source !== window) return;
+  
+  if (e.data && e.data.type === 'SAVEGPT_CLAUDE_CHAT_INTERCEPTED') {
+    console.log('[SaveGPT] Cache Claude network data');
+    window.SaveGPTClaudeData = e.data.data;
+  }
+  
+  if (e.data && e.data.type === 'SAVEGPT_DEEPSEEK_CHAT_INTERCEPTED') {
+    console.log('[SaveGPT] Cache DeepSeek network data');
+    window.SaveGPTDeepSeekData = e.data.data;
+  }
+});
+
 /**
  * SaveGPT Content Script
  * Handles auto-scrolling, active DOM extraction, Markdown rendering,
@@ -403,6 +432,7 @@ async function extractMedia(turns) {
  */
 async function handleExport(options = {}) {
   const platform = window.SaveGPTParsers.detectPlatform();
+  const format = options.format || 'markdown';
   
   if (options.autoScroll) {
     createOverlay();
@@ -415,39 +445,278 @@ async function handleExport(options = {}) {
     }
   }
 
-  // Compile final markdown
+  // Compile final output based on format
   try {
     if (options.autoScroll) {
-      updateStatusText('Generating Markdown structures...', 98);
+      updateStatusText('Generating structures...', 98);
     }
 
     const turns = window.SaveGPTParsers.extractConversation();
     const title = window.SaveGPTParsers.extractTitle(platform);
     
-    let markdown = '';
+    let fileContent = '';
 
-    // Append metadata if checked
-    if (options.includeMetadata) {
-      markdown += `---\n`;
-      markdown += `title: "${title.replace(/"/g, '\\"')}"\n`;
-      markdown += `source: ${window.location.href}\n`;
-      markdown += `platform: ${platform.toUpperCase()}\n`;
-      markdown += `exportDate: ${new Date().toLocaleString()}\n`;
-      markdown += `---\n\n`;
-      markdown += `# ${title}\n\n`;
-      markdown += `*Exported from [${platform.toUpperCase()}](${window.location.href})*\n\n---\n\n`;
-    } else {
-      markdown += `# ${title}\n\n`;
-    }
-
-    if (turns.length === 0) {
-      markdown += `*No conversation turns could be detected. This might be due to structural changes on the chat interface or an empty chat.*`;
-    } else {
-      turns.forEach((turn) => {
-        const senderIcon = turn.sender === 'User' ? '🧑 **User**' : '🤖 **Assistant**';
-        const turnMd = window.SaveGPTMarkdown.convert(turn.element);
-        markdown += `### ${senderIcon}\n\n${turnMd}\n\n---\n\n`;
+    if (format === 'json') {
+      const jsonOutput = {
+        title: title,
+        source: window.location.href,
+        platform: platform.toUpperCase(),
+        exportDate: new Date().toLocaleString(),
+        messages: turns.map(t => ({
+          sender: t.sender,
+          text: t.rawText !== undefined ? t.rawText : window.SaveGPTMarkdown.convert(t.element)
+        }))
+      };
+      fileContent = JSON.stringify(jsonOutput, null, 2);
+    } 
+    else if (format === 'html') {
+      let htmlMessages = '';
+      turns.forEach((t) => {
+        const senderLabel = t.sender === 'User' ? 'User' : 'Assistant';
+        const senderClass = t.sender === 'User' ? 'user-msg' : 'assistant-msg';
+        const avatar = t.sender === 'User' ? '🧑' : '🤖';
+        
+        let contentHtml = '';
+        if (t.rawText !== undefined) {
+          contentHtml = convertMarkdownToHtml(t.rawText);
+        } else {
+          contentHtml = t.element.innerHTML;
+        }
+        
+        htmlMessages += `
+        <div class="message-card ${senderClass}">
+          <div class="message-header">
+            <span class="avatar">${avatar}</span>
+            <span class="sender-name">${senderLabel}</span>
+          </div>
+          <div class="message-content">
+            ${contentHtml}
+          </div>
+        </div>`;
       });
+
+      fileContent = `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>${escapeHtml(title)} - Chat Export</title>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg-app: #060913;
+      --bg-card: rgba(15, 23, 42, 0.45);
+      --border-glass: rgba(255, 255, 255, 0.08);
+      --text-primary: #f8fafc;
+      --text-secondary: #94a3b8;
+      --text-muted: #64748b;
+      --color-cyan: #06b6d4;
+      --color-purple: #8b5cf6;
+      --grad-primary: linear-gradient(135deg, #06b6d4 0%, #8b5cf6 100%);
+    }
+    
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+    
+    body {
+      background-color: var(--bg-app);
+      color: var(--text-primary);
+      font-family: 'Outfit', sans-serif;
+      line-height: 1.6;
+      padding: 40px 20px;
+    }
+    
+    .container {
+      max-width: 800px;
+      margin: 0 auto;
+      display: flex;
+      flex-direction: column;
+      gap: 24px;
+    }
+    
+    header {
+      border-bottom: 1px solid var(--border-glass);
+      padding-bottom: 20px;
+      margin-bottom: 10px;
+    }
+    
+    h1 {
+      font-size: 32px;
+      font-weight: 800;
+      letter-spacing: -0.02em;
+      margin-bottom: 8px;
+      background: var(--grad-primary);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+    
+    .metadata {
+      font-size: 13px;
+      color: var(--text-secondary);
+      display: flex;
+      flex-wrap: wrap;
+      gap: 16px;
+    }
+    
+    .metadata a {
+      color: var(--color-cyan);
+      text-decoration: none;
+    }
+    
+    .metadata a:hover {
+      text-decoration: underline;
+    }
+    
+    .message-card {
+      background: var(--bg-card);
+      backdrop-filter: blur(10px);
+      -webkit-backdrop-filter: blur(10px);
+      border: 1px solid var(--border-glass);
+      border-radius: 16px;
+      padding: 24px;
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+      transition: transform 0.2s ease;
+      margin-bottom: 20px;
+    }
+    
+    .message-card:hover {
+      transform: translateY(-2px);
+    }
+    
+    .user-msg {
+      border-left: 4px solid var(--color-cyan);
+    }
+    
+    .assistant-msg {
+      border-left: 4px solid var(--color-purple);
+    }
+    
+    .message-header {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 16px;
+    }
+    
+    .avatar {
+      font-size: 20px;
+    }
+    
+    .sender-name {
+      font-weight: 700;
+      font-size: 15px;
+      letter-spacing: -0.01em;
+    }
+    
+    .message-content {
+      font-size: 15px;
+      color: #e2e8f0;
+    }
+    
+    .message-content p {
+      margin-bottom: 12px;
+    }
+    
+    .message-content p:last-child {
+      margin-bottom: 0;
+    }
+    
+    pre {
+      background: #0f172a;
+      border: 1px solid rgba(255, 255, 255, 0.05);
+      border-radius: 8px;
+      padding: 16px;
+      overflow-x: auto;
+      margin: 16px 0;
+      font-family: 'Fira Code', 'Courier New', Courier, monospace;
+      font-size: 14px;
+    }
+    
+    code {
+      background: rgba(255, 255, 255, 0.06);
+      padding: 2px 6px;
+      border-radius: 4px;
+      font-family: 'Fira Code', 'Courier New', Courier, monospace;
+      font-size: 13.5px;
+    }
+    
+    pre code {
+      background: transparent;
+      padding: 0;
+      border-radius: 0;
+      font-size: 14px;
+    }
+    
+    a {
+      color: var(--color-cyan);
+      text-decoration: none;
+    }
+    
+    a:hover {
+      text-decoration: underline;
+    }
+    
+    ul, ol {
+      margin: 12px 0 12px 20px;
+    }
+    
+    li {
+      margin-bottom: 6px;
+    }
+    
+    blockquote {
+      border-left: 4px solid var(--text-muted);
+      padding-left: 16px;
+      color: var(--text-secondary);
+      font-style: italic;
+      margin: 16px 0;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <h1>${escapeHtml(title)}</h1>
+      <div class="metadata">
+        <span>Platform: <strong>${platform.toUpperCase()}</strong></span>
+        <span>Source: <a href="${window.location.href}" target="_blank">${window.location.href}</a></span>
+        <span>Date: <strong>${new Date().toLocaleString()}</strong></span>
+      </div>
+    </header>
+    <main>
+      ${htmlMessages}
+    </main>
+  </div>
+</body>
+</html>`;
+    } 
+    else {
+      // Default: Markdown
+      if (options.includeMetadata) {
+        fileContent += `---\n`;
+        fileContent += `title: "${title.replace(/"/g, '\\"')}"\n`;
+        fileContent += `source: ${window.location.href}\n`;
+        fileContent += `platform: ${platform.toUpperCase()}\n`;
+        fileContent += `exportDate: ${new Date().toLocaleString()}\n`;
+        fileContent += `---\n\n`;
+        fileContent += `# ${title}\n\n`;
+        fileContent += `*Exported from [${platform.toUpperCase()}](${window.location.href})*\n\n---\n\n`;
+      } else {
+        fileContent += `# ${title}\n\n`;
+      }
+
+      if (turns.length === 0) {
+        fileContent += `*No conversation turns could be detected. This might be due to structural changes on the chat interface or an empty chat.*`;
+      } else {
+        turns.forEach((turn) => {
+          const senderIcon = turn.sender === 'User' ? '🧑 **User**' : '🤖 **Assistant**';
+          const turnMd = turn.rawText !== undefined ? turn.rawText : window.SaveGPTMarkdown.convert(turn.element);
+          fileContent += `### ${senderIcon}\n\n${turnMd}\n\n---\n\n`;
+        });
+      }
     }
 
     // Extract media assets if selected
@@ -478,11 +747,11 @@ async function handleExport(options = {}) {
             
             // 1. Match Markdown images: ![alt](url)
             const imgRegex = new RegExp(`!\\[([^\\]]*)\\]\\(${pattern}\\)`, 'gi');
-            markdown = markdown.replace(imgRegex, `![$1](media/${media.name})`);
+            fileContent = fileContent.replace(imgRegex, `![$1](media/${media.name})`);
             
             // 2. Match Markdown anchors: [text](url)
             const linkRegex = new RegExp(`\\[([^\\]]*)\\]\\(${pattern}\\)`, 'gi');
-            markdown = markdown.replace(linkRegex, `[$1](media/${media.name})`);
+            fileContent = fileContent.replace(linkRegex, `[$1](media/${media.name})`);
           });
         }
       });
@@ -496,7 +765,8 @@ async function handleExport(options = {}) {
     return {
       success: true,
       title: title,
-      markdown: markdown,
+      fileContent: fileContent,
+      format: format,
       mediaList: mediaList,
       platform: platform
     };
@@ -511,6 +781,81 @@ async function handleExport(options = {}) {
       error: error.message
     };
   }
+}
+
+/**
+ * Helper: Convert Markdown string to HTML (simple regex-based parser)
+ */
+function convertMarkdownToHtml(md) {
+  if (!md) return '';
+  
+  let html = md;
+  
+  // Escape HTML entities to prevent injection
+  html = html
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+    
+  // Code Blocks: ```lang ... ```
+  html = html.replace(/```([a-zA-Z0-9+-]*)\n([\s\S]*?)\n```/g, (match, lang, code) => {
+    return `<pre><code class="language-${lang}">${code}</code></pre>`;
+  });
+  
+  // Inline code: `code`
+  html = html.replace(/`([^`\n]+)`/g, '<code>$1</code>');
+  
+  // Blockquotes: > quote
+  html = html.replace(/^\s*>\s+(.+)$/gm, '<blockquote>$1</blockquote>');
+  
+  // Headers: ###, ##, #
+  html = html.replace(/^\s*###\s+(.+)$/gm, '<h3>$1</h3>');
+  html = html.replace(/^\s*##\s+(.+)$/gm, '<h2>$1</h2>');
+  html = html.replace(/^\s*#\s+(.+)$/gm, '<h1>$1</h1>');
+  
+  // Unordered list items: - item or * item
+  html = html.replace(/^\s*[-*]\s+(.+)$/gm, '<li>$1</li>');
+  
+  // Wrap list items in <ul>
+  html = html.replace(/(<li>.*<\/li>)/g, '<ul>$1</ul>');
+  html = html.replace(/<\/ul>\s*<ul>/g, '');
+
+  // Bold: **text** or __text__
+  html = html.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
+  html = html.replace(/__([^_]+)__/g, '<strong>$1</strong>');
+  
+  // Italics: *text* or _text_
+  html = html.replace(/\*([^*]+)\*/g, '<em>$1</em>');
+  html = html.replace(/_([^_]+)_/g, '<em>$1</em>');
+  
+  // Links: [text](url)
+  html = html.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank">$1</a>');
+  
+  // Paragraphs: double newlines
+  const paragraphs = html.split(/\n\n+/);
+  html = paragraphs.map(p => {
+    p = p.trim();
+    if (!p) return '';
+    if (p.startsWith('<pre') || p.startsWith('<h') || p.startsWith('<ul') || p.startsWith('<blockquote')) {
+      return p;
+    }
+    return `<p>${p.replace(/\n/g, '<br>')}</p>`;
+  }).filter(Boolean).join('\n');
+  
+  return html;
+}
+
+/**
+ * Helper: Escape HTML strings
+ */
+function escapeHtml(str) {
+  if (!str) return '';
+  return str
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
 }
 
 // Global runtime listener for Chrome extension message passing

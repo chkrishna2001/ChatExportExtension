@@ -114,7 +114,7 @@ async function processBatchQueue() {
 
       if (result && result.success) {
         // 4. Download file (including media list if checked)
-        triggerDownload(result.title, result.markdown, result.mediaList, batchOptions.downloadMedia, result.platform);
+        triggerDownload(result.title, result.fileContent, result.mediaList, batchOptions.downloadMedia, result.platform, result.format);
         finalizeTabAndContinue(true, currentUrl);
       } else {
         const errorMsg = result ? result.error : 'Parsing returned empty results.';
@@ -130,10 +130,10 @@ async function processBatchQueue() {
 
 /**
  * Triggers file download (with media subfolder capabilities if selected).
- * Organizes outputs cleanly in: toolname_chats/toolname_title_timestamp.md
+ * Organizes outputs cleanly in: toolname_chats/toolname_title_timestamp.ext
  * Leverages Blob URLs when supported, and falls back to safe Data URIs.
  */
-function triggerDownload(title, markdownContent, mediaList = [], downloadMedia = false, platform = 'unknown') {
+function triggerDownload(title, fileContent, mediaList = [], downloadMedia = false, platform = 'unknown', format = 'markdown') {
   const sanitizedTitle = sanitizeFilename(title || 'AI_Chat_Export');
   
   // Determine target platform label
@@ -149,13 +149,23 @@ function triggerDownload(title, markdownContent, mediaList = [], downloadMedia =
   // Parent folder: toolname_chats
   const platformFolder = `${platformStr}_chats`;
 
+  let fileExt = 'md';
+  let mimeType = 'text/markdown;charset=utf-8';
+  if (format === 'html') {
+    fileExt = 'html';
+    mimeType = 'text/html;charset=utf-8';
+  } else if (format === 'json') {
+    fileExt = 'json';
+    mimeType = 'application/json;charset=utf-8';
+  }
+
   let url;
   let isBlob = false;
   
   // Try to generate Blob URL first (best for Firefox; might be restricted in Chrome MV3 workers)
   try {
     if (typeof Blob !== 'undefined' && typeof URL !== 'undefined' && typeof URL.createObjectURL === 'function') {
-      const blob = new Blob([markdownContent], { type: 'text/markdown;charset=utf-8' });
+      const blob = new Blob([fileContent], { type: mimeType });
       url = URL.createObjectURL(blob);
       isBlob = true;
     }
@@ -165,25 +175,25 @@ function triggerDownload(title, markdownContent, mediaList = [], downloadMedia =
 
   // Fallback to Data URI if Blob URL failed
   if (!url) {
-    url = 'data:text/markdown;charset=utf-8,' + encodeURIComponent(markdownContent);
+    url = 'data:' + mimeType + ',' + encodeURIComponent(fileContent);
   }
 
-  let markdownPath;
+  let filePath;
   let targetFolder;
 
   if (downloadMedia && mediaList.length > 0) {
     // With media: nested inside toolname_chats/toolname_title_timestamp/
     targetFolder = `${platformFolder}/${baseName}`;
-    markdownPath = `${targetFolder}/${baseName}.md`;
+    filePath = `${targetFolder}/${baseName}.${fileExt}`;
   } else {
-    // Without media: saved directly as toolname_chats/toolname_title_timestamp.md
+    // Without media: saved directly as toolname_chats/toolname_title_timestamp.ext
     targetFolder = platformFolder;
-    markdownPath = `${platformFolder}/${baseName}.md`;
+    filePath = `${platformFolder}/${baseName}.${fileExt}`;
   }
 
   chrome.downloads.download({
     url: url,
-    filename: markdownPath,
+    filename: filePath,
     saveAs: false
   }, (downloadId) => {
     if (chrome.runtime.lastError) {

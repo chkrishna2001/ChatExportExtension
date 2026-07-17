@@ -12,6 +12,7 @@ const SaveGPTParsers = {
     if (host.includes('chatgpt.com')) return 'chatgpt';
     if (host.includes('claude.ai')) return 'claude';
     if (host.includes('gemini.google.com')) return 'gemini';
+    if (host.includes('deepseek.com')) return 'deepseek';
     return 'unknown';
   },
 
@@ -38,6 +39,11 @@ const SaveGPTParsers = {
           const titleText = headerTitle.textContent.trim();
           if (titleText) return titleText;
         }
+      } else if (platform === 'deepseek') {
+        if (window.SaveGPTDeepSeekData && window.SaveGPTDeepSeekData.data && window.SaveGPTDeepSeekData.data.biz_data && window.SaveGPTDeepSeekData.data.biz_data.chat_session) {
+          const networkTitle = window.SaveGPTDeepSeekData.data.biz_data.chat_session.title;
+          if (networkTitle) return networkTitle.trim();
+        }
       } else if (platform === 'gemini') {
         // Gemini active item in sidebar
         const activeNav = document.querySelector('a.active-chat-item, .navigation-item.selected');
@@ -55,6 +61,7 @@ const SaveGPTParsers = {
       .replace(/\s*-\s*ChatGPT\s*$/i, '')
       .replace(/\s*-\s*Claude\s*$/i, '')
       .replace(/\s*-\s*Gemini\s*$/i, '')
+      .replace(/\s*-\s*DeepSeek\s*$/i, '')
       .trim();
 
     return title || 'AI Chat Export';
@@ -68,7 +75,13 @@ const SaveGPTParsers = {
     const platform = this.detectPlatform();
     console.log(`🔍 SaveGPT: Extracting chat for platform: ${platform}`);
     
-    let turns = [];
+    // Try network extraction first
+    let turns = this.extractConversationFromNetwork(platform);
+    if (turns && turns.length > 0) {
+      return turns;
+    }
+    
+    turns = [];
     switch (platform) {
       case 'chatgpt':
         turns = this._parseChatGPT();
@@ -79,18 +92,111 @@ const SaveGPTParsers = {
       case 'gemini':
         turns = this._parseGemini();
         break;
+      case 'deepseek':
+        turns = this._parseDeepSeek();
+        break;
       default:
         turns = this._parseAdaptive();
         break;
     }
 
-    // If specific parser fails to find anything, try the adaptive fallback
-    if (turns.length === 0) {
-      console.warn(`⚠️ SaveGPT: Platform parser for ${platform} returned 0 results. Running adaptive fallback...`);
-      turns = this._parseAdaptive();
+    // If specific parser fails or returns incomplete results (missing either sender), try the adaptive fallback
+    const hasUser = turns.some(t => t.sender === 'User');
+    const hasAssistant = turns.some(t => t.sender === 'Assistant');
+    if (turns.length === 0 || !hasUser || !hasAssistant) {
+      console.warn(`⚠️ SaveGPT: Platform parser for ${platform} returned incomplete results (User: ${hasUser}, Assistant: ${hasAssistant}). Running adaptive fallback...`);
+      const fallbackTurns = this._parseAdaptive();
+      if (fallbackTurns && fallbackTurns.length > 0) {
+        turns = fallbackTurns;
+      }
     }
 
     return turns;
+  },
+
+  /**
+   * Network-based Extraction
+   */
+  extractConversationFromNetwork(platform) {
+    if (platform === 'claude' && window.SaveGPTClaudeData) {
+      try {
+        const data = window.SaveGPTClaudeData;
+        const messages = data.chat_messages || [];
+        const turns = [];
+        messages.forEach((msg) => {
+          if (msg.sender && (msg.text || msg.content)) {
+            let text = msg.text || '';
+            if (!text && Array.isArray(msg.content)) {
+              text = msg.content
+                .map(block => block.text || '')
+                .filter(Boolean)
+                .join('\n');
+            }
+            const virtualEl = document.createElement('div');
+            virtualEl.className = msg.sender === 'human' ? 'font-user-message' : 'font-claude-message';
+            virtualEl.textContent = text;
+            turns.push({
+              sender: msg.sender === 'human' ? 'User' : 'Assistant',
+              element: virtualEl,
+              rawText: text
+            });
+          }
+        });
+        if (turns.length > 0) {
+          console.log('✅ SaveGPT: Successfully extracted Claude chat from network JSON!');
+          return turns;
+        }
+      } catch (e) {
+        console.error('❌ SaveGPT: Error parsing Claude network data:', e);
+      }
+    }
+    
+    if (platform === 'deepseek' && window.SaveGPTDeepSeekData) {
+      try {
+        const bizData = window.SaveGPTDeepSeekData.data && window.SaveGPTDeepSeekData.data.biz_data;
+        if (bizData) {
+          const chatMessages = bizData.chat_messages || [];
+          const turns = [];
+          chatMessages.forEach((msg) => {
+            const role = msg.role;
+            const fragments = msg.fragments || [];
+            let messageText = '';
+            let thinkingText = '';
+            fragments.forEach((frag) => {
+              if (frag.type === 'THINKING') {
+                thinkingText += frag.content || '';
+              } else if (frag.type === 'RESPONSE' || frag.type === 'REQUEST') {
+                messageText += frag.content || '';
+              } else {
+                messageText += frag.content || '';
+              }
+            });
+            let combinedText = '';
+            if (thinkingText.trim()) {
+              combinedText += `> **Thought Process**\n> \n` + thinkingText.split('\n').map(line => `> ${line}`).join('\n') + `\n\n`;
+            }
+            combinedText += messageText;
+            if (combinedText.trim()) {
+              const virtualEl = document.createElement('div');
+              virtualEl.className = role === 'USER' ? 'user-message' : 'ds-markdown';
+              virtualEl.textContent = combinedText;
+              turns.push({
+                sender: role === 'USER' ? 'User' : 'Assistant',
+                element: virtualEl,
+                rawText: combinedText
+              });
+            }
+          });
+          if (turns.length > 0) {
+            console.log('✅ SaveGPT: Successfully extracted DeepSeek chat from network JSON!');
+            return turns;
+          }
+        }
+      } catch (e) {
+        console.error('❌ SaveGPT: Error parsing DeepSeek network data:', e);
+      }
+    }
+    return null;
   },
 
   /**
@@ -155,16 +261,17 @@ const SaveGPTParsers = {
     const turns = [];
     
     // Claude conversation bubbles are wrapped in messages container
-    // User messages typically contain class 'font-user-message' or 'user-message'
-    // Assistant messages typically contain class 'font-claude-message' or 'claude-message'
+    // User messages typically contain class 'font-user-message', 'user-message', or 'human-message'
+    // Assistant messages typically contain class 'font-claude-message', 'claude-message', 'font-assistant-message', or 'assistant-message'
     
     // Let's find all elements that represent a message bubble
-    const messages = document.querySelectorAll('.font-user-message, .font-claude-message, [data-testid="user-message"], [data-testid="claude-message"]');
+    const messages = document.querySelectorAll('.font-user-message, .font-claude-message, .font-claude-response, .font-assistant-message, .user-message, .claude-message, .assistant-message, .human-message, [data-testid="user-message"], [data-testid="claude-message"], [data-testid="assistant-message"]');
     
     if (messages.length > 0) {
       messages.forEach((msg) => {
         const isUser = msg.classList.contains('font-user-message') || 
                        msg.classList.contains('user-message') ||
+                       msg.classList.contains('human-message') ||
                        msg.getAttribute('data-testid') === 'user-message';
         turns.push({
           sender: isUser ? 'User' : 'Assistant',
@@ -177,8 +284,8 @@ const SaveGPTParsers = {
     // Fallback Claude: find general row/grid containers
     const rows = document.querySelectorAll('div.flex.flex-col.gap-6 div.flex, div[class*="message-container"]');
     rows.forEach((row) => {
-      const userText = row.querySelector('.font-user-message');
-      const assistantText = row.querySelector('.font-claude-message');
+      const userText = row.querySelector('.font-user-message, .user-message, .human-message, [data-testid="user-message"]');
+      const assistantText = row.querySelector('.font-claude-message, .font-claude-response, .claude-message, .font-assistant-message, .assistant-message, [data-testid="claude-message"], [data-testid="assistant-message"]');
       
       if (userText) {
         turns.push({ sender: 'User', element: userText });
@@ -187,6 +294,23 @@ const SaveGPTParsers = {
       }
     });
 
+    return turns;
+  },
+
+  /**
+   * DeepSeek DOM Parser
+   * @private
+   */
+  _parseDeepSeek() {
+    const turns = [];
+    const messages = document.querySelectorAll('.ds-markdown, ._9663006');
+    messages.forEach((msg) => {
+      const isUser = msg.matches('._9663006') || msg.classList.contains('user-message');
+      turns.push({
+        sender: isUser ? 'User' : 'Assistant',
+        element: msg
+      });
+    });
     return turns;
   },
 

@@ -15,6 +15,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // Active Tab Elements
   const btnExportActive = document.getElementById('btn-export-active');
+  const activeFormat = document.getElementById('active-format');
   const activeScroll = document.getElementById('active-scroll');
   const activeMetadata = document.getElementById('active-metadata');
   const activeMediaDownload = document.getElementById('active-media-download');
@@ -23,6 +24,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // Batch Export Elements
   const batchUrls = document.getElementById('batch-urls');
+  const batchFormat = document.getElementById('batch-format');
   const batchScroll = document.getElementById('batch-scroll');
   const batchMetadata = document.getElementById('batch-metadata');
   const batchMediaDownload = document.getElementById('batch-media-download');
@@ -70,17 +72,21 @@ document.addEventListener('DOMContentLoaded', () => {
     'activeScroll', 
     'activeMetadata', 
     'activeMediaDownload',
+    'activeFormat',
     'batchScroll', 
     'batchMetadata', 
     'batchMediaDownload',
+    'batchFormat',
     'batchUrlsCache'
   ], (res) => {
     if (res.activeScroll !== undefined) activeScroll.checked = res.activeScroll;
     if (res.activeMetadata !== undefined) activeMetadata.checked = res.activeMetadata;
     if (res.activeMediaDownload !== undefined) activeMediaDownload.checked = res.activeMediaDownload;
+    if (res.activeFormat !== undefined) activeFormat.value = res.activeFormat;
     if (res.batchScroll !== undefined) batchScroll.checked = res.batchScroll;
     if (res.batchMetadata !== undefined) batchMetadata.checked = res.batchMetadata;
     if (res.batchMediaDownload !== undefined) batchMediaDownload.checked = res.batchMediaDownload;
+    if (res.batchFormat !== undefined) batchFormat.value = res.batchFormat;
     if (res.batchUrlsCache !== undefined) batchUrls.value = res.batchUrlsCache;
   });
 
@@ -94,9 +100,11 @@ document.addEventListener('DOMContentLoaded', () => {
   activeScroll.addEventListener('change', (e) => savePreference('activeScroll', e.target.checked));
   activeMetadata.addEventListener('change', (e) => savePreference('activeMetadata', e.target.checked));
   activeMediaDownload.addEventListener('change', (e) => savePreference('activeMediaDownload', e.target.checked));
+  activeFormat.addEventListener('change', (e) => savePreference('activeFormat', e.target.value));
   batchScroll.addEventListener('change', (e) => savePreference('batchScroll', e.target.checked));
   batchMetadata.addEventListener('change', (e) => savePreference('batchMetadata', e.target.checked));
   batchMediaDownload.addEventListener('change', (e) => savePreference('batchMediaDownload', e.target.checked));
+  batchFormat.addEventListener('change', (e) => savePreference('batchFormat', e.target.value));
   batchUrls.addEventListener('input', (e) => savePreference('batchUrlsCache', e.target.value));
 
   /* ==========================================================================
@@ -109,12 +117,23 @@ document.addEventListener('DOMContentLoaded', () => {
     if (platform === 'chatgpt') {
       platformName.textContent = 'ChatGPT';
       btnExportActive.disabled = false;
+      btnExportActive.style.opacity = '1';
+      btnExportActive.style.cursor = 'pointer';
     } else if (platform === 'claude') {
       platformName.textContent = 'Claude AI';
       btnExportActive.disabled = false;
+      btnExportActive.style.opacity = '1';
+      btnExportActive.style.cursor = 'pointer';
     } else if (platform === 'gemini') {
       platformName.textContent = 'Gemini';
       btnExportActive.disabled = false;
+      btnExportActive.style.opacity = '1';
+      btnExportActive.style.cursor = 'pointer';
+    } else if (platform === 'deepseek') {
+      platformName.textContent = 'DeepSeek';
+      btnExportActive.disabled = false;
+      btnExportActive.style.opacity = '1';
+      btnExportActive.style.cursor = 'pointer';
     } else {
       platformName.textContent = 'Unsupported';
       btnExportActive.disabled = true;
@@ -134,6 +153,7 @@ document.addEventListener('DOMContentLoaded', () => {
       if (activeTabUrl.includes('chatgpt.com')) detectedPlatform = 'chatgpt';
       else if (activeTabUrl.includes('claude.ai')) detectedPlatform = 'claude';
       else if (activeTabUrl.includes('gemini.google.com')) detectedPlatform = 'gemini';
+      else if (activeTabUrl.includes('deepseek.com')) detectedPlatform = 'deepseek';
 
       updatePlatformBadge(detectedPlatform);
     }
@@ -157,7 +177,8 @@ document.addEventListener('DOMContentLoaded', () => {
       options: {
         autoScroll: activeScroll.checked,
         includeMetadata: activeMetadata.checked,
-        downloadMedia: activeMediaDownload.checked
+        downloadMedia: activeMediaDownload.checked,
+        format: activeFormat.value
       }
     }, (result) => {
       // Check callbacks
@@ -172,7 +193,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
       if (result && result.success) {
         // Trigger download inside popup
-        triggerLocalDownload(result.title, result.markdown, result.mediaList, activeMediaDownload.checked, result.platform);
+        triggerLocalDownload(result.title, result.fileContent, result.mediaList, activeMediaDownload.checked, result.platform, activeFormat.value);
       } else {
         alert(`Export failed: ${result ? result.error : 'Unknown parsing error'}`);
       }
@@ -184,7 +205,7 @@ document.addEventListener('DOMContentLoaded', () => {
    * Organizes outputs cleanly in: toolname_chats/toolname_title_timestamp.md
    * Uses Blob/createObjectURL for full compatibility on Firefox and Chrome
    */
-  function triggerLocalDownload(title, markdownContent, mediaList = [], downloadMedia = false, platform = 'unknown') {
+  function triggerLocalDownload(title, fileContent, mediaList = [], downloadMedia = false, platform = 'unknown', format = 'markdown') {
     const sanitizeFilename = (name) => name.replace(/[\\/:*?"<>|]/g, '_').replace(/\s+/g, '_').trim();
     const cleanTitle = sanitizeFilename(title || 'Export');
     
@@ -201,30 +222,40 @@ document.addEventListener('DOMContentLoaded', () => {
     // Parent folder: toolname_chats
     const platformFolder = `${platformStr}_chats`;
     
-    // Create Blob URL for markdown (works 100% in Firefox and Chrome)
-    const blob = new Blob([markdownContent], { type: 'text/markdown;charset=utf-8' });
-    const markdownBlobUrl = URL.createObjectURL(blob);
+    let fileExt = 'md';
+    let mimeType = 'text/markdown;charset=utf-8';
+    if (format === 'html') {
+      fileExt = 'html';
+      mimeType = 'text/html;charset=utf-8';
+    } else if (format === 'json') {
+      fileExt = 'json';
+      mimeType = 'application/json;charset=utf-8';
+    }
 
-    let markdownPath;
+    // Create Blob URL (works 100% in Firefox and Chrome)
+    const blob = new Blob([fileContent], { type: mimeType });
+    const downloadBlobUrl = URL.createObjectURL(blob);
+
+    let filePath;
     let targetFolder;
 
     if (downloadMedia && mediaList.length > 0) {
       // With media: nested inside toolname_chats/toolname_title_timestamp/
       targetFolder = `${platformFolder}/${baseName}`;
-      markdownPath = `${targetFolder}/${baseName}.md`;
+      filePath = `${targetFolder}/${baseName}.${fileExt}`;
     } else {
-      // Without media: saved directly as toolname_chats/toolname_title_timestamp.md
+      // Without media: saved directly as toolname_chats/toolname_title_timestamp.ext
       targetFolder = platformFolder;
-      markdownPath = `${platformFolder}/${baseName}.md`;
+      filePath = `${platformFolder}/${baseName}.${fileExt}`;
     }
 
     chrome.downloads.download({
-      url: markdownBlobUrl,
-      filename: markdownPath,
+      url: downloadBlobUrl,
+      filename: filePath,
       saveAs: false
     }, () => {
       // Cleanup Blob URL shortly after
-      setTimeout(() => URL.revokeObjectURL(markdownBlobUrl), 15000);
+      setTimeout(() => URL.revokeObjectURL(downloadBlobUrl), 15000);
     });
 
     // Download media files inside subfolders
@@ -288,7 +319,8 @@ document.addEventListener('DOMContentLoaded', () => {
       options: {
         autoScroll: batchScroll.checked,
         includeMetadata: batchMetadata.checked,
-        downloadMedia: batchMediaDownload.checked
+        downloadMedia: batchMediaDownload.checked,
+        format: batchFormat.value
       }
     }, (response) => {
       if (response && response.success) {

@@ -7,13 +7,13 @@
     "activeTab",
     "tabs",
     "downloads",
-    "storage",
-    "scripting"
+    "storage"
   ],
   "host_permissions": [
     "https://chatgpt.com/*",
     "https://*.claude.ai/*",
-    "https://gemini.google.com/*"
+    "https://gemini.google.com/*",
+    "https://chat.deepseek.com/*"
   ],
   "action": {
     "default_popup": "src/popup.html",
@@ -46,14 +46,24 @@
       "matches": [
         "https://chatgpt.com/*",
         "https://*.claude.ai/*",
-        "https://gemini.google.com/*"
+        "https://gemini.google.com/*",
+        "https://chat.deepseek.com/*"
       ],
       "js": [
         "src/parsers.js",
         "src/markdown.js",
         "src/content.js"
       ],
-      "run_at": "document_end"
+      "run_at": "document_start"
+    }
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": ["src/inject.js"],
+      "matches": [
+        "https://*.claude.ai/*",
+        "https://chat.deepseek.com/*"
+      ]
     }
   ],
   "browser_specific_settings": {
