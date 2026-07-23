@@ -98,7 +98,7 @@ async function processBatchQueue() {
     }
 
     // Give dynamic JS a moment to render the DOM
-    await new Promise(r => setTimeout(r, 2500));
+    await new Promise(r => setTimeout(r, batchOptions.delay));
 
     // 3. Request content script to scroll and compile Markdown
     chrome.tabs.sendMessage(currentTabId, {
@@ -268,7 +268,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     }
 
     batchQueue = [...message.urls];
-    batchOptions = message.options || {};
+    batchOptions = message.options || { delay: 2000 };
     totalCount = batchQueue.length;
     completedCount = 0;
     isBatchRunning = true;

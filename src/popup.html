@@ -77,17 +77,6 @@
             </label>
           </div>
 
-          <div class="setting-item">
-            <div class="setting-info">
-              <span class="setting-label">Download chat media</span>
-              <span class="setting-tooltip">Saves images and attachments in a dedicated subfolder.</span>
-            </div>
-            <label class="switch">
-              <input type="checkbox" id="active-media-download">
-              <span class="slider"></span>
-            </label>
-          </div>
-        </div>
 
         <button id="btn-export-active" class="btn-primary">
           <span class="btn-glow"></span>
@@ -116,6 +105,14 @@
         <div class="settings-section">
           <h3 class="section-title">Batch Configurations</h3>
           
+          <div class="setting-item">
+            <div class="setting-info">
+              <span class="setting-label">Request delay (ms)</span>
+              <span class="setting-tooltip">Time to wait between chats to avoid "too many requests" errors.</span>
+            </div>
+            <input type="number" id="batch-delay" class="format-select" value="2000" step="500" min="0" style="text-align: center;">
+          </div>
+
           <div class="setting-item">
             <div class="setting-info">
               <span class="setting-label">Export format</span>

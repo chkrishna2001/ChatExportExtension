@@ -24,6 +24,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // Batch Export Elements
   const batchUrls = document.getElementById('batch-urls');
+  const batchDelay = document.getElementById('batch-delay');
   const batchFormat = document.getElementById('batch-format');
   const batchScroll = document.getElementById('batch-scroll');
   const batchMetadata = document.getElementById('batch-metadata');
@@ -77,6 +78,7 @@ document.addEventListener('DOMContentLoaded', () => {
     'batchMetadata', 
     'batchMediaDownload',
     'batchFormat',
+    'batchDelay',
     'batchUrlsCache'
   ], (res) => {
     if (res.activeScroll !== undefined) activeScroll.checked = res.activeScroll;
@@ -87,6 +89,7 @@ document.addEventListener('DOMContentLoaded', () => {
     if (res.batchMetadata !== undefined) batchMetadata.checked = res.batchMetadata;
     if (res.batchMediaDownload !== undefined) batchMediaDownload.checked = res.batchMediaDownload;
     if (res.batchFormat !== undefined) batchFormat.value = res.batchFormat;
+    if (res.batchDelay !== undefined) batchDelay.value = res.batchDelay;
     if (res.batchUrlsCache !== undefined) batchUrls.value = res.batchUrlsCache;
   });
 
@@ -105,6 +108,7 @@ document.addEventListener('DOMContentLoaded', () => {
   batchMetadata.addEventListener('change', (e) => savePreference('batchMetadata', e.target.checked));
   batchMediaDownload.addEventListener('change', (e) => savePreference('batchMediaDownload', e.target.checked));
   batchFormat.addEventListener('change', (e) => savePreference('batchFormat', e.target.value));
+  batchDelay.addEventListener('input', (e) => savePreference('batchDelay', parseInt(e.target.value) || 2000));
   batchUrls.addEventListener('input', (e) => savePreference('batchUrlsCache', e.target.value));
 
   /* ==========================================================================
